@@ -25,3 +25,10 @@ tokio = { version = "1.20", features = ["sync"]}
 
 [dev-dependencies]
 tokio = { version = "1.20", features = ["rt", "macros"]}
+
+[package.metadata.docs.rs]
+targets = [
+    "x86_64-apple-darwin",
+    "aarch64-apple-darwin",
+    "aarch64-apple-ios"
+]
