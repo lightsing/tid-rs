@@ -34,5 +34,5 @@ fn main() {
         .wait()
         .unwrap();
 
-    println!("cargo:rustc-link-arg={}", format!("{}/libtest.a", output))
+    println!("cargo:rustc-link-arg={}/libtest.a", output)
 }

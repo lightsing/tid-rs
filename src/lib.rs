@@ -205,6 +205,12 @@ impl LAContext {
     }
 }
 
+impl Default for LAContext {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Drop for LAContext {
     fn drop(&mut self) {
         unsafe {
