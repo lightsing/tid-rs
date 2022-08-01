@@ -31,9 +31,14 @@
 #![deny(missing_docs)]
 
 use num::FromPrimitive;
+use parking_lot::Mutex;
+use std::cell::Cell;
 use std::ffi::{c_void, CString};
+use std::future::Future;
 use std::os::raw::c_char;
-use tokio::sync::oneshot::Sender;
+use std::pin::Pin;
+use std::rc::Rc;
+use std::task::{Context, Poll, Waker};
 
 extern "C" {
     fn create_la_context() -> *mut c_void;
@@ -44,7 +49,7 @@ extern "C" {
         ctx: *mut c_void,
         policy: i32,
         reason: *const c_char,
-        user_data: *mut c_void,
+        user_data: *const c_void,
         callback: *mut c_void,
     );
 }
@@ -184,18 +189,19 @@ impl LAContext {
         localized_reason: &str,
     ) -> Result<(), LAError> {
         let reason = CString::new(localized_reason).unwrap();
-        let (tx, rx) = tokio::sync::oneshot::channel();
-        let tx = Box::into_raw(Box::new(tx));
+        // let (tx, rx) = tokio::sync::oneshot::channel();
+        // let tx = Box::into_raw(Box::new(tx));
+        let fut = EvaluateFuture::new();
         unsafe {
             evaluate_policy(
                 self.inner,
                 policy as i32,
                 reason.as_ptr(),
-                tx as *mut c_void,
+                fut.inner.clone().into_raw() as *mut c_void,
                 evaluate_callback as *mut c_void,
             );
         }
-        rx.await.unwrap()
+        fut.await
     }
 }
 
@@ -207,12 +213,59 @@ impl Drop for LAContext {
     }
 }
 
-unsafe extern "C" fn evaluate_callback(tx: *mut c_void, success: i32, code: i32) {
-    let tx = Box::from_raw(tx as *mut Sender<Result<(), LAError>>);
+struct EvaluateFuture {
+    inner: Rc<EvaluateFutureInner>,
+}
+
+#[derive(Default)]
+struct EvaluateFutureInner {
+    result: Mutex<Cell<Option<Result<(), LAError>>>>,
+    waker: Cell<Option<Waker>>,
+}
+
+impl EvaluateFuture {
+    fn new() -> EvaluateFuture {
+        EvaluateFuture {
+            inner: Rc::new(EvaluateFutureInner::default()),
+        }
+    }
+}
+
+impl EvaluateFutureInner {
+    fn into_raw(self: Rc<Self>) -> *const EvaluateFutureInner {
+        Rc::into_raw(self)
+    }
+}
+
+impl Future for EvaluateFuture {
+    type Output = Result<(), LAError>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let guard = self.inner.result.lock();
+        self.inner.waker.set(Some(cx.waker().clone()));
+        if let Some(result) = guard.take() {
+            Poll::Ready(result)
+        } else {
+            Poll::Pending
+        }
+    }
+}
+
+unsafe extern "C" fn evaluate_callback(tx: *const c_void, success: i32, code: i32) {
+    let fut = Rc::from_raw(tx as *const EvaluateFutureInner);
+    let guard = fut.result.lock();
     if success == 1 {
-        tx.send(Ok(())).unwrap();
+        guard.set(Some(Ok(())));
     } else {
         let error: LAError = FromPrimitive::from_i32(code).unwrap();
-        tx.send(Err(error)).unwrap();
+        guard.set(Some(Err(error)));
+    }
+    loop {
+        if let Some(waker) = fut.waker.take() {
+            waker.wake();
+            break;
+        }
+        // the callback usually needs some time to be call (user need time to respond),
+        // during that period the waker should already set.
     }
 }
