@@ -8,6 +8,10 @@ repository = "https://github.com/lightsing/tid-rs"
 categories = ["authentication", "api-bindings", "hardware-support"]
 keywords = ["macos", "touchid"]
 license = "MIT"
+include = [
+    "/**/*.rs",
+    "/foreign",
+]
 
 [lib]
 name = "tid"
