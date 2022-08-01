@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ## [0.1.1] - 2022-08-01
+### Added
+- LAContext::default
 ### Changed
 - tid no longer depend on `tokio`
 ### Fixed
