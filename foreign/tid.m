@@ -10,7 +10,9 @@ void drop_la_context(void* ctx) {
 }
 
 void set_localized_cancel_title(void* ctx, char* reason) {
-    [(__bridge LAContext*)ctx setLocalizedCancelTitle:[[NSString alloc] initWithCString:reason]];
+    NSString titleString = [[NSString alloc] initWithCString:reason encoding:NSUTF8StringEncoding];
+    [(__bridge LAContext*)ctx setLocalizedCancelTitle:titleString];
+    [titleString release];
 }
 
 int32_t can_evaluate_policy(void *ctx, int32_t policy) {
@@ -32,4 +34,5 @@ void evaluate_policy(void* ctx, int32_t policy, char* reason, void* future, void
             }
         }
     ];
+    [reasonString release];
 }
